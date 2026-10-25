@@ -1,0 +1,134 @@
+
+name: Deploy Bot5 to PebbleHost
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pebblehost-bot5
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Bot5 and Restart Server
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install SFTP client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lftp
+
+      - name: Configure SSH host verification
+        env:
+          KNOWN_HOSTS: ${{ secrets.SFTP_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          test -n "$KNOWN_HOSTS"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload Bot5 files
+        shell: bash
+        env:
+          SFTP_HOST: ${{ secrets.SFTP_HOST }}
+          SFTP_PORT: ${{ secrets.SFTP_PORT }}
+          SFTP_USERNAME: ${{ secrets.SFTP_USERNAME }}
+          SFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          test -n "$SFTP_HOST"
+          test -n "$SFTP_PORT"
+          test -n "$SFTP_USERNAME"
+          test -n "$SFTP_PASSWORD"
+
+          lftp -u "$SFTP_USERNAME","$SFTP_PASSWORD" \
+            -p "$SFTP_PORT" "sftp://$SFTP_HOST" <<'EOF'
+          set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=yes"
+          set net:max-retries 2
+          set net:timeout 30
+          set cmd:fail-exit yes
+
+          cd /Bot5
+
+          mirror --reverse --verbose \
+            --exclude-glob .git/ \
+            --exclude-glob .github/ \
+            --exclude-glob .gitignore \
+            --exclude-glob .env \
+            --exclude-glob .env.* \
+            --exclude-glob __pycache__/ \
+            --exclude-glob "*.pyc" \
+            --exclude-glob "*.json" \
+            --exclude-glob "*.db" \
+            --exclude-glob "*.db-*" \
+            --exclude-glob "*.sqlite" \
+            --exclude-glob "*.sqlite3" \
+            --exclude-glob "*.sqlite-*" \
+            --exclude-glob "*.sqlite3-*" \
+            --exclude-glob "*.log" \
+            --exclude-glob cookies.txt \
+            --exclude-glob logs/ \
+            --exclude-glob node_modules/ \
+            --exclude-glob pebblehost.yml \
+            --exclude-glob pebble-python-config.json \
+            ./ /Bot5/
+
+          mirror --reverse --verbose \
+            --only-missing \
+            --include-glob "*.json" \
+            --exclude-glob .git/ \
+            --exclude-glob .github/ \
+            --exclude-glob __pycache__/ \
+            --exclude-glob node_modules/ \
+            --exclude-glob config.json \
+            --exclude-glob pebble-python-config.json \
+            ./ /Bot5/
+
+          bye
+          EOF
+
+      - name: Restart PebbleHost Server
+        if: success()
+        shell: bash
+        env:
+          PANEL_URL: ${{ secrets.PEBBLE_PANEL_URL }}
+          API_KEY: ${{ secrets.PEBBLE_API_KEY }}
+          SERVER_ID: ${{ secrets.PEBBLE_SERVER_ID }}
+        run: |
+          set -euo pipefail
+
+          test -n "$PANEL_URL"
+          test -n "$API_KEY"
+          test -n "$SERVER_ID"
+
+          curl --fail-with-body \
+            --retry 3 \
+            --request POST \
+            "${PANEL_URL%/}/api/client/servers/${SERVER_ID}/power" \
+            -H "Authorization: Bearer ${API_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            --data '{"signal":"restart"}'
+
+          echo "PebbleHost restart requested."
+
+      - name: Deployment complete
+        run: |
+          echo "Bot5 upload completed."
+          echo "Existing JSON files were not overwritten."
+          echo "Bot1 through Bot4 files were not targeted."
+          echo "PebbleHost restart requested successfully."
