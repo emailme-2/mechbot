@@ -19,9 +19,9 @@ from core import BRAND_COLOR, COLORS, panel
 logger = logging.getLogger(__name__)
 
 DATA_FILE = Path(__file__).resolve().parent.parent / "roster.json"
-DEPTS = ("mechanic", "sales")
-DEPT_TITLE = {"mechanic": "🔧 Mechanic", "sales": "🚗 Sales"}
-DEPT_CMD = {"mechanic": "mechroster", "sales": "salesroster"}
+DEPTS = ("mechanic", "sales", "both")
+DEPT_TITLE = {"mechanic": "🔧 Mechanic", "sales": "🚗 Sales", "both": "📋 Full"}
+DEPT_CMD = {"mechanic": "mechroster", "sales": "salesroster", "both": "bothroster"}
 
 # Members holding this role may configure the rosters.
 ROSTER_ROLE = 1412488659097358376
@@ -60,6 +60,7 @@ class Roster(commands.Cog):
 
     mechroster = app_commands.Group(name="mechroster", description="Mechanic roster")
     salesroster = app_commands.Group(name="salesroster", description="Sales roster")
+    bothroster = app_commands.Group(name="bothroster", description="Combined roster")
 
     async def _deny(self, interaction: discord.Interaction) -> bool:
         if ROSTER_ROLE in {r.id for r in getattr(interaction.user, "roles", [])}:
@@ -230,6 +231,24 @@ class Roster(commands.Cog):
     @app_commands.guild_only()
     async def sales_display(self, interaction: discord.Interaction, channel: discord.TextChannel):
         await self._set_display(interaction, "sales", channel)
+
+    # ── Combined roster ─────────────────────────────────────────────────────────
+    @bothroster.command(name="show", description="Show the combined roster")
+    @app_commands.guild_only()
+    async def both_show(self, interaction: discord.Interaction):
+        await self._show(interaction, "both")
+
+    @bothroster.command(name="ranks", description="Set the combined roster rank roles (highest first)")
+    @app_commands.describe(roles="Mention the rank roles in order, highest first")
+    @app_commands.guild_only()
+    async def both_ranks(self, interaction: discord.Interaction, roles: str):
+        await self._set_ranks(interaction, "both", roles)
+
+    @bothroster.command(name="display", description="Post an auto-updating combined roster in a channel")
+    @app_commands.describe(channel="The channel to post it in")
+    @app_commands.guild_only()
+    async def both_display(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        await self._set_display(interaction, "both", channel)
 
     # ── Auto-update ─────────────────────────────────────────────────────────────
     @commands.Cog.listener()
