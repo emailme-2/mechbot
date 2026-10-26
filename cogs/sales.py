@@ -283,40 +283,34 @@ class Sales(commands.Cog):
                 view=view, allowed_mentions=discord.AllowedMentions.none())
             return
 
-        blocks = []
+        # Simple commission summary at the top (lifetime totals).
+        def _dept_comm(cat):
+            return sum(_commission(r['lifetime_total'], cat, rk)
+                       for rk, r in (stats.get(cat) or {}).items())
+
+        blocks = [
+            f"**Sales commission:** ${_dept_comm('sale'):,}\n"
+            f"**Tech commission:** ${_dept_comm('mechanic'):,}"
+        ]
+
+        # Stats below, unbolded.
         for cat in CATEGORIES:
             dept = stats.get(cat) or {}
             lines = [f"### {CATEGORY_LABELS[cat]}"]
             current = _rank_name(target, cat)
             if current:
-                lines.append(f"**Current rank:** {current}")
-
+                lines.append(f"Current rank: {current}")
             if not dept:
                 lines.append("No recorded work.")
                 blocks.append("\n".join(lines))
                 continue
-
-            week_comm = life_comm = 0
             for rank in _rank_order(cat, dept):
                 r = dept[rank]
-                rate = _rate(cat, rank)
-                w, l = _commission(r['weekly_total'], cat, rank), _commission(r['lifetime_total'], cat, rank)
-                week_comm += w
-                life_comm += l
-                pct = f" ({round(rate * 100)}%)" if rate else ""
-                wc = f" (${w:,} commission)" if rate else ""
-                lc = f" (${l:,} commission)" if rate else ""
                 lines.append(
-                    f"\n**{rank}**{pct}\n"
-                    f"This week: {r['weekly_cars']} cars, ${r['weekly_total']:,}{wc}\n"
-                    f"Lifetime: {r['lifetime_cars']} cars, ${r['lifetime_total']:,}{lc}"
+                    f"\n{rank}\n"
+                    f"This week: {r['weekly_cars']} cars, ${r['weekly_total']:,}\n"
+                    f"Lifetime: {r['lifetime_cars']} cars, ${r['lifetime_total']:,}"
                 )
-
-            if life_comm or week_comm:
-                if cat == 'sale':
-                    lines.append("\n**Your commissions**")
-                    lines.append(f"**Sales Commission:** ${life_comm:,}")
-                lines.append(f"**Total commission:** ${week_comm:,} this week, ${life_comm:,} lifetime")
             blocks.append("\n".join(lines))
 
         view = panel(
