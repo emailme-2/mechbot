@@ -33,11 +33,13 @@ class MechTree(app_commands.CommandTree):
 
 class MechBot(commands.Bot):
     def __init__(self) -> None:
-        # message_content lets the bot read what people type (needed to react to
-        # keywords). It's a privileged intent: also enable it in the Developer
-        # Portal under Bot -> Privileged Gateway Intents, or message text is empty.
+        # Privileged intents: message_content lets the bot read message text
+        # (keyword reactions, invoice images); members lets it list role.members
+        # for the rosters. Both must also be enabled in the Developer Portal under
+        # Bot -> Privileged Gateway Intents, or they do nothing / the bot won't start.
         intents = discord.Intents.default()
         intents.message_content = True
+        intents.members = True
 
         # command_prefix is required but unused: this bot is slash-command only.
         super().__init__(
