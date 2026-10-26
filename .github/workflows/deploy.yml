@@ -1,4 +1,3 @@
-
 name: Deploy Bot5 to PebbleHost
 
 on:
@@ -34,10 +33,7 @@ jobs:
           KNOWN_HOSTS: ${{ secrets.SFTP_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-<<<<<<< HEAD
-=======
 
->>>>>>> 58293541680d0c82434c3fc71d34781642735bc9
           test -n "$KNOWN_HOSTS"
 
           mkdir -p ~/.ssh
@@ -122,6 +118,13 @@ jobs:
           test -n "$API_KEY"
           test -n "$SERVER_ID"
 
+          # Force https: a scheme-less or http:// panel URL makes Cloudflare answer
+          # the POST with a 302 redirect instead of restarting the server.
+          HOST="${PANEL_URL#http://}"
+          HOST="${HOST#https://}"
+          HOST="${HOST%/}"
+          ENDPOINT="https://${HOST}/api/client/servers/${SERVER_ID}/power"
+
           echo "Sending PebbleHost restart request..."
 
           HTTP_CODE=$(curl \
@@ -132,7 +135,7 @@ jobs:
             --dump-header /tmp/pebble-headers.txt \
             --write-out "%{http_code}" \
             --request POST \
-            "${PANEL_URL%/}/api/client/servers/${SERVER_ID}/power" \
+            "$ENDPOINT" \
             -H "Authorization: Bearer ${API_KEY}" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json" \
@@ -146,34 +149,19 @@ jobs:
           fi
 
           echo "Response details:"
-<<<<<<< HEAD
-          grep -Ei \
-            '^(HTTP/|content-type:|server:)' \
-            /tmp/pebble-headers.txt || true
+          grep -Ei '^(HTTP/|content-type:|server:)' /tmp/pebble-headers.txt || true
 
           echo "Redirect destination:"
           grep -i '^location:' /tmp/pebble-headers.txt \
-=======
-
-          grep -Ei \
-            '^(HTTP/|location:|content-type:|server:)' \
-            /tmp/pebble-headers.txt \
->>>>>>> 58293541680d0c82434c3fc71d34781642735bc9
-            | sed -E \
-            's#(https?://[^/ ]+).*#\1/[path hidden]#' \
+            | sed -E 's#(https?://[^/ ]+).*#\1/[path hidden]#' \
             || true
 
           case "$HTTP_CODE" in
             301|302|303|307|308)
-              echo "::error::PebbleHost API redirected."
-<<<<<<< HEAD
-              echo "Check the redirect destination."
-=======
-              echo "Check panel URL and Cloudflare."
->>>>>>> 58293541680d0c82434c3fc71d34781642735bc9
+              echo "::error::PebbleHost API redirected. Set PEBBLE_PANEL_URL to https://panel.pebblehost.com (no path) and PEBBLE_SERVER_ID to the short server id."
               ;;
             401)
-              echo "::error::Invalid API key."
+              echo "::error::Invalid API key (use a Client API key, starts with ptlc_)."
               ;;
             403)
               echo "::error::API access forbidden."
