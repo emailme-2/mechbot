@@ -87,10 +87,12 @@ class Roster(commands.Cog):
 
     def _build_view(self, guild, dept) -> discord.ui.LayoutView:
         roles = self.cfg[dept]["roles"]
-        # On the mechanic and sales rosters, anyone who holds a role from BOTH
-        # rosters is pulled out of their normal rank into an "On Both" block.
-        # The both-roster is a separate management list, so it's not affected.
-        both_ids = self._dual_member_ids(guild) if dept in ("mechanic", "sales") else set()
+        work = dept in ("mechanic", "sales")
+        # Management (anyone on the both-roster) is kept off the mech/sales lists.
+        # Of the rest, whoever holds a role from BOTH mech and sales goes into the
+        # "On Both" block at the bottom; the both-roster itself shows everyone.
+        mgmt_ids = self._role_member_ids(guild, "both") if work else set()
+        dual_ids = self._dual_member_ids(guild) if work else set()
 
         shown, blocks, on_both, normal_count = set(), [], [], 0
         for rid in roles:
@@ -101,11 +103,12 @@ class Roster(commands.Cog):
             if not members:
                 continue
             shown.update(m.id for m in members)
-            normal = [m for m in members if m.id not in both_ids]
+            eligible = [m for m in members if m.id not in mgmt_ids]
+            normal = [m for m in eligible if m.id not in dual_ids]
             if normal:
                 blocks.append((role.name, normal))
                 normal_count += len(normal)
-            on_both.extend(m for m in members if m.id in both_ids)
+            on_both.extend(m for m in eligible if m.id in dual_ids)
 
         view = discord.ui.LayoutView(timeout=None)
         container = discord.ui.Container(accent_colour=BRAND_COLOR)
@@ -299,11 +302,13 @@ class Roster(commands.Cog):
         changed = {r.id for r in before.roles} ^ {r.id for r in after.roles}
 
         to_refresh = set()
-        # mech and sales rosters share the "On Both" section, so a change to
-        # either one's roles can move someone on the other roster too.
-        if changed & (set(self.cfg["mechanic"]["roles"]) | set(self.cfg["sales"]["roles"])):
+        work_roles = set(self.cfg["mechanic"]["roles"]) | set(self.cfg["sales"]["roles"])
+        mgmt_roles = set(self.cfg["both"]["roles"])
+        # mech/sales share the On Both section and also hide management, so a change
+        # to any mech, sales, or management role can affect both work rosters.
+        if changed & (work_roles | mgmt_roles):
             to_refresh |= {"mechanic", "sales"}
-        if changed & set(self.cfg["both"]["roles"]):
+        if changed & mgmt_roles:
             to_refresh.add("both")
 
         for dept in to_refresh:
