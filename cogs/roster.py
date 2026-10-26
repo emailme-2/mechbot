@@ -123,7 +123,10 @@ class Roster(commands.Cog):
             return
         try:
             message = await channel.fetch_message(cfg["message_id"])
-            await message.edit(view=self._build_view(guild, dept))
+            await message.edit(
+                view=self._build_view(guild, dept),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             pass
 
@@ -154,7 +157,10 @@ class Roster(commands.Cog):
                 ephemeral=True,
             )
             return
-        await interaction.response.send_message(view=self._build_view(interaction.guild, dept))
+        await interaction.response.send_message(
+            view=self._build_view(interaction.guild, dept),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
     async def _set_ranks(self, interaction: discord.Interaction, dept: str, roles: str):
         if await self._deny(interaction):
@@ -176,7 +182,9 @@ class Roster(commands.Cog):
         _save(self.cfg)
         order = "\n".join(f"{i + 1}. {interaction.guild.get_role(r).mention}" for i, r in enumerate(ids))
         await interaction.response.send_message(
-            view=panel(f"✅ {DEPT_TITLE[dept]} Ranks Set", f"Top to bottom:\n{order}", color=COLORS["green"]))
+            view=panel(f"✅ {DEPT_TITLE[dept]} Ranks Set", f"Top to bottom:\n{order}", color=COLORS["green"]),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
         await self._refresh(interaction.guild, dept)
 
     async def _set_display(self, interaction: discord.Interaction, dept: str, channel: discord.TextChannel):
@@ -184,7 +192,10 @@ class Roster(commands.Cog):
             return
         await interaction.response.defer(ephemeral=True)
         try:
-            message = await channel.send(view=self._build_view(interaction.guild, dept))
+            message = await channel.send(
+                view=self._build_view(interaction.guild, dept),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
         except discord.Forbidden:
             await interaction.followup.send(f"I can't send messages in {channel.mention}.", ephemeral=True)
             return
