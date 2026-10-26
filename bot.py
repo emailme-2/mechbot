@@ -59,8 +59,13 @@ class MechBot(commands.Bot):
         guild_id = os.getenv("GUILD_ID", "").strip()
         if guild_id:
             guild = discord.Object(id=int(guild_id))
+            # Push every command to this one guild so updates show up instantly.
             self.tree.copy_global_to(guild=guild)
             synced = await self.tree.sync(guild=guild)
+            # Drop the global copies, otherwise each command shows twice (once
+            # global, once guild). The guild commands synced just above stay.
+            self.tree.clear_commands(guild=None)
+            await self.tree.sync()
             print(f"Synced {len(synced)} slash command(s) to guild {guild_id}")
         else:
             synced = await self.tree.sync()
