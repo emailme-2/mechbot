@@ -39,6 +39,20 @@ MECH_CHOICES = [app_commands.Choice(name=RANK_NAMES[r], value=str(r)) for r in M
 SALES_CHOICES = [app_commands.Choice(name=RANK_NAMES[r], value=str(r)) for r in SALES_LADDER]
 DEPT_CHOICES = [app_commands.Choice(name=DEPT_LABEL[d].split()[-1], value=d) for d in LADDERS]
 
+# Reply to a member's message with "hire <keyword>" to hire them at that rank.
+# The "hire " prefix is required, so normal chat (e.g. someone asking about a rank)
+# never triggers it.
+HIRE_KEYWORDS = {
+    "mech": MECH_LADDER[0], "mechanic": MECH_LADDER[0],
+    "mtech": MECH_LADDER[1], "mastertech": MECH_LADDER[1], "master tech": MECH_LADDER[1],
+    "sales": SALES_LADDER[0], "salesman": SALES_LADDER[0],
+    "super": SALES_LADDER[1], "supervisor": SALES_LADDER[1],
+}
+
+
+def _dept_of(role_id: int) -> str:
+    return "mechanic" if role_id in MECH_LADDER else "sales"
+
 
 def _depts_held(member: discord.Member) -> set[str]:
     ids = {r.id for r in member.roles}
@@ -259,6 +273,62 @@ class Staff(commands.Cog):
             footer=f"By {interaction.user.display_name}",
         )
         await interaction.followup.send(view=view)
+
+    # ── Reply-to-hire ────────────────────────────────────────────────────────────
+    async def _apply_hire_one(self, member: discord.Member, dept: str, role_id: int) -> str | None:
+        add_ids = {role_id, ACCEPTED, DEPT_ROLE[dept]}
+        remove_ids = {r for r in LADDERS[dept] if r != role_id}  # other ranks in this dept
+        held = {r.id for r in member.roles}
+        return await self._apply_roles(member, add_ids - held, (remove_ids - add_ids) & held)
+
+    @staticmethod
+    async def _react(message: discord.Message, emoji: str) -> None:
+        try:
+            await message.add_reaction(emoji)
+        except discord.HTTPException:
+            pass
+
+    @staticmethod
+    def _hire_help() -> discord.ui.LayoutView:
+        return panel(
+            "How to hire",
+            "Reply to the person's message with one of these:",
+            "🔧 **Mechanic**: `hire mech`\n"
+            "🔧 **Master Tech**: `hire mtech`\n"
+            "🚗 **Autos Salesman**: `hire sales`\n"
+            "🚗 **Autos Supervisor**: `hire super`",
+        )
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot or not message.guild:
+            return
+        if not (ALLOWED_ROLES & {r.id for r in getattr(message.author, "roles", [])}):
+            return
+
+        text = message.content.strip().lower()
+        if text == "hire":
+            await message.reply(view=self._hire_help(), mention_author=False)
+            return
+        if message.reference is None or not text.startswith("hire "):
+            return
+        role_id = HIRE_KEYWORDS.get(text[5:].strip())
+        if role_id is None:
+            return
+
+        ref = message.reference
+        target_msg = ref.resolved if isinstance(ref.resolved, discord.Message) else None
+        if target_msg is None:
+            try:
+                target_msg = await message.channel.fetch_message(ref.message_id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                return
+        target = message.guild.get_member(target_msg.author.id)
+        if target is None or target.bot:
+            return
+
+        error = await self._apply_hire_one(target, _dept_of(role_id), role_id)
+        await self._react(message, "⚠️" if error else "✅")
 
 
 async def setup(bot: commands.Bot) -> None:

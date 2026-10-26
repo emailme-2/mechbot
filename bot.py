@@ -10,6 +10,7 @@ from discord.ext import commands
 from core import COLORS, now, panel
 
 COGS_DIR = Path(__file__).with_name("cogs")
+STARTUP_CHANNEL_ID = 1255165944595222599
 
 
 class MechTree(app_commands.CommandTree):
@@ -48,6 +49,7 @@ class MechBot(commands.Bot):
             tree_cls=MechTree,
         )
         self.started_at = now()
+        self._startup_announced = False
 
     async def setup_hook(self) -> None:
         await self.load_cogs()
@@ -84,3 +86,23 @@ class MechBot(commands.Bot):
         )
         print(f"Logged in as {self.user} (ID: {self.user.id})")
         print(f"Connected to {len(self.guilds)} guild(s) - bot is ONLINE")
+
+        # Announce once per start, not on every reconnect.
+        if not self._startup_announced:
+            self._startup_announced = True
+            await self._announce_startup()
+
+    async def _announce_startup(self) -> None:
+        channel = self.get_channel(STARTUP_CHANNEL_ID)
+        if channel is None:
+            return
+        view = panel(
+            "✅ MechBot is online",
+            f"Started {discord.utils.format_dt(self.started_at, 'R')}.",
+            f"**Commands:** {len(self.tree.get_commands())}  ·  **Cogs:** {len(self.cogs)}",
+            color=COLORS["green"],
+        )
+        try:
+            await channel.send(view=view)
+        except discord.HTTPException:
+            pass
