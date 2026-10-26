@@ -36,7 +36,7 @@ The bot comes online with an "online" presence and a listening activity.
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe bot.py
+.\.venv\Scripts\python.exe main.py
 ```
 
-You should see `Logged in as ... - bot is ONLINE` and the command list in Discord.
+`main.py` is the bot's entry point. You should see `Logged in as ... - bot is ONLINE` and the command list in Discord.
