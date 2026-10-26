@@ -114,7 +114,8 @@ def _save(data: dict) -> None:
 
 
 def _blank() -> dict:
-    return {'weekly_cars': 0, 'weekly_total': 0, 'lifetime_cars': 0, 'lifetime_total': 0}
+    return {'weekly_cars': 0, 'weekly_total': 0, 'lifetime_cars': 0, 'lifetime_total': 0,
+            'weekly_fees': 0, 'lifetime_fees': 0}
 
 
 def _week_start() -> str:
@@ -144,6 +145,17 @@ def extract_total(text: str):
     return max(amounts) if amounts else None
 
 
+def extract_fees(text: str):
+    """Find the 'Mechanic Fees' amount (the tech's commission on mechanic work)."""
+    for line in text.splitlines():
+        low = line.lower()
+        if 'mechanic' in low and 'fee' in low:
+            match = AMOUNT_RE.search(line)
+            if match:
+                return _amount_from(match.group(1))
+    return None
+
+
 class Sales(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -161,6 +173,7 @@ class Sales(commands.Cog):
                     for stats in (user.get(cat) or {}).values():
                         stats['weekly_cars'] = 0
                         stats['weekly_total'] = 0
+                        stats['weekly_fees'] = 0
         return g
 
     async def _set_channel(self, interaction: discord.Interaction, category: str, channel: discord.TextChannel):
@@ -170,12 +183,12 @@ class Sales(commands.Cog):
             f'✅ Tracking {CATEGORY_LABELS[category]} work from {channel.mention}.', ephemeral=True,
         )
 
-    async def _read_total(self, attachment: discord.Attachment):
-        """Send the image to OCR.space and pull out the Total + Fees amount."""
+    async def _read_invoice(self, attachment: discord.Attachment):
+        """OCR the image and return (total, mechanic_fees). Either may be None."""
         try:
             image = await attachment.read()
         except discord.HTTPException:
-            return None
+            return None, None
 
         form = aiohttp.FormData()
         form.add_field('apikey', API_KEY)
@@ -192,15 +205,16 @@ class Sales(commands.Cog):
                     result = await resp.json(content_type=None)
         except (aiohttp.ClientError, json.JSONDecodeError, TimeoutError) as error:
             logger.warning('OCR request failed: %s', error)
-            return None
+            return None, None
 
         if result.get('IsErroredOnProcessing'):
             logger.warning('OCR error: %s', result.get('ErrorMessage'))
-            return None
+            return None, None
         parsed = result.get('ParsedResults') or []
         if not parsed:
-            return None
-        return extract_total(parsed[0].get('ParsedText', ''))
+            return None, None
+        text = parsed[0].get('ParsedText', '')
+        return extract_total(text), extract_fees(text)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -217,7 +231,7 @@ class Sales(commands.Cog):
         if image is None:
             return
 
-        total = await self._read_total(image)
+        total, fees = await self._read_invoice(image)
         if total is None:
             await self._react(message, '⚠️')  # couldn't read a total, not counted
             return
@@ -231,6 +245,10 @@ class Sales(commands.Cog):
         stats['weekly_total'] += total
         stats['lifetime_cars'] += 1
         stats['lifetime_total'] += total
+        # Mechanic fees are the tech's commission; only tracked on mechanic work.
+        if category == 'mechanic' and fees:
+            stats['weekly_fees'] = stats.get('weekly_fees', 0) + fees
+            stats['lifetime_fees'] = stats.get('lifetime_fees', 0) + fees
         _save(self.data)
 
         await self._react(message, '✅')
@@ -286,14 +304,16 @@ class Sales(commands.Cog):
                 view=view, allowed_mentions=discord.AllowedMentions.none())
             return
 
-        # Simple commission summary at the top (lifetime totals).
-        def _dept_comm(cat):
-            return sum(_commission(r['lifetime_total'], cat, rk)
-                       for rk, r in (stats.get(cat) or {}).items())
+        # Simple commission summary at the top (lifetime). Sales is a % of the
+        # total; tech commission is the sum of the mechanic fees on the invoices.
+        sales_comm = sum(_commission(r['lifetime_total'], 'sale', rk)
+                         for rk, r in (stats.get('sale') or {}).items())
+        tech_comm = sum(r.get('lifetime_fees', 0)
+                        for r in (stats.get('mechanic') or {}).values())
 
         blocks = [
-            f"**Sales commission:** ${_dept_comm('sale'):,}\n"
-            f"**Tech commission:** ${_dept_comm('mechanic'):,}"
+            f"**Sales commission:** ${sales_comm:,}\n"
+            f"**Tech commission:** ${tech_comm:,}"
         ]
 
         # Stats below, unbolded.
@@ -309,11 +329,15 @@ class Sales(commands.Cog):
                 continue
             for rank in _rank_order(cat, dept):
                 r = dept[rank]
-                lines.append(
+                block = (
                     f"\n{rank}\n"
                     f"This week: {r['weekly_cars']} cars, ${r['weekly_total']:,}\n"
                     f"Lifetime: {r['lifetime_cars']} cars, ${r['lifetime_total']:,}"
                 )
+                if cat == 'mechanic' and (r.get('lifetime_fees') or r.get('weekly_fees')):
+                    block += (f"\nFees: ${r.get('weekly_fees', 0):,} this week, "
+                              f"${r.get('lifetime_fees', 0):,} lifetime")
+                lines.append(block)
             blocks.append("\n".join(lines))
 
         view = panel(
