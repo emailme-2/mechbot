@@ -34,6 +34,10 @@ jobs:
           KNOWN_HOSTS: ${{ secrets.SFTP_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
+<<<<<<< HEAD
+=======
+
+>>>>>>> 58293541680d0c82434c3fc71d34781642735bc9
           test -n "$KNOWN_HOSTS"
 
           mkdir -p ~/.ssh
@@ -142,12 +146,19 @@ jobs:
           fi
 
           echo "Response details:"
+<<<<<<< HEAD
           grep -Ei \
             '^(HTTP/|content-type:|server:)' \
             /tmp/pebble-headers.txt || true
 
           echo "Redirect destination:"
           grep -i '^location:' /tmp/pebble-headers.txt \
+=======
+
+          grep -Ei \
+            '^(HTTP/|location:|content-type:|server:)' \
+            /tmp/pebble-headers.txt \
+>>>>>>> 58293541680d0c82434c3fc71d34781642735bc9
             | sed -E \
             's#(https?://[^/ ]+).*#\1/[path hidden]#' \
             || true
@@ -155,7 +166,11 @@ jobs:
           case "$HTTP_CODE" in
             301|302|303|307|308)
               echo "::error::PebbleHost API redirected."
+<<<<<<< HEAD
               echo "Check the redirect destination."
+=======
+              echo "Check panel URL and Cloudflare."
+>>>>>>> 58293541680d0c82434c3fc71d34781642735bc9
               ;;
             401)
               echo "::error::Invalid API key."
