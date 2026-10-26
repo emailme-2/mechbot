@@ -29,10 +29,16 @@ class MechTree(app_commands.CommandTree):
 
 class MechBot(commands.Bot):
     def __init__(self) -> None:
+        # message_content lets the bot read what people type (needed to react to
+        # keywords). It's a privileged intent: also enable it in the Developer
+        # Portal under Bot -> Privileged Gateway Intents, or message text is empty.
+        intents = discord.Intents.default()
+        intents.message_content = True
+
         # command_prefix is required but unused: this bot is slash-command only.
         super().__init__(
             command_prefix="!",
-            intents=discord.Intents.default(),
+            intents=intents,
             tree_cls=MechTree,
         )
         self.started_at = now()
