@@ -22,7 +22,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core import panel
+from core import COLORS, panel
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,9 @@ OCR_URL = 'https://api.ocr.space/parse/image'
 
 CATEGORIES = ('mechanic', 'sale')
 CATEGORY_LABELS = {'mechanic': '🔧 Mechanic', 'sale': '🚗 Sales'}
+
+# Role allowed to reset recorded sales with /salesreset.
+RESET_ROLE = 1412488659097358376
 
 # Rank roles per department (highest first), shown on /checksales.
 DEPT_RANKS = {
@@ -322,6 +325,31 @@ class Sales(commands.Cog):
         )
         await interaction.response.send_message(
             view=view, allowed_mentions=discord.AllowedMentions.none())
+
+    @app_commands.command(name='salesreset', description='Clear recorded sales/fees (everyone, or one member)')
+    @app_commands.describe(user='Reset just this member (leave blank to reset everyone)')
+    @app_commands.guild_only()
+    async def salesreset(self, interaction: discord.Interaction, user: discord.Member | None = None):
+        if RESET_ROLE not in {r.id for r in getattr(interaction.user, "roles", [])}:
+            await interaction.response.send_message(
+                view=panel("⛔ Not allowed", "You don't have the role to use this.", color=COLORS['red']),
+                ephemeral=True,
+            )
+            return
+        g = self._guild(interaction.guild_id)
+        if user is not None:
+            cleared = g['users'].pop(str(user.id), None) is not None
+            body = (f"Cleared {user.mention}'s recorded sales and fees."
+                    if cleared else f"{user.mention} had no recorded sales.")
+        else:
+            g['users'] = {}
+            body = "Cleared all recorded sales and fees. Starting fresh."
+        _save(self.data)
+        await interaction.response.send_message(
+            view=panel("✅ Sales Reset", body, color=COLORS['green']),
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
 
 async def setup(bot: commands.Bot):
