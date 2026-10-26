@@ -23,6 +23,9 @@ DEPTS = ("mechanic", "sales")
 DEPT_TITLE = {"mechanic": "🔧 Mechanic", "sales": "🚗 Sales"}
 DEPT_CMD = {"mechanic": "mechroster", "sales": "salesroster"}
 
+# Members holding this role may configure the rosters.
+ROSTER_ROLE = 1412488659097358376
+
 
 def _blank_dept() -> dict:
     return {"roles": [], "display_channel": None, "message_id": None}
@@ -57,6 +60,15 @@ class Roster(commands.Cog):
 
     mechroster = app_commands.Group(name="mechroster", description="Mechanic roster")
     salesroster = app_commands.Group(name="salesroster", description="Sales roster")
+
+    async def _deny(self, interaction: discord.Interaction) -> bool:
+        if ROSTER_ROLE in {r.id for r in getattr(interaction.user, "roles", [])}:
+            return False
+        await interaction.response.send_message(
+            view=panel("⛔ Not allowed", "You don't have the role to manage the roster.", color=COLORS["red"]),
+            ephemeral=True,
+        )
+        return True
 
     # ── Rendering ───────────────────────────────────────────────────────────────
     def _build_view(self, guild, dept) -> discord.ui.LayoutView:
@@ -144,6 +156,8 @@ class Roster(commands.Cog):
         await interaction.response.send_message(view=self._build_view(interaction.guild, dept))
 
     async def _set_ranks(self, interaction: discord.Interaction, dept: str, roles: str):
+        if await self._deny(interaction):
+            return
         ids, invalid = self._parse_roles(interaction.guild, roles)
         if invalid:
             await interaction.response.send_message(
@@ -165,6 +179,8 @@ class Roster(commands.Cog):
         await self._refresh(interaction.guild, dept)
 
     async def _set_display(self, interaction: discord.Interaction, dept: str, channel: discord.TextChannel):
+        if await self._deny(interaction):
+            return
         await interaction.response.defer(ephemeral=True)
         try:
             message = await channel.send(view=self._build_view(interaction.guild, dept))
@@ -187,14 +203,12 @@ class Roster(commands.Cog):
 
     @mechroster.command(name="ranks", description="Set the mechanic rank roles (highest first)")
     @app_commands.describe(roles="Mention the rank roles in order, highest first")
-    @app_commands.checks.has_permissions(administrator=True)
     @app_commands.guild_only()
     async def mech_ranks(self, interaction: discord.Interaction, roles: str):
         await self._set_ranks(interaction, "mechanic", roles)
 
     @mechroster.command(name="display", description="Post an auto-updating mechanic roster in a channel")
     @app_commands.describe(channel="The channel to post it in")
-    @app_commands.checks.has_permissions(administrator=True)
     @app_commands.guild_only()
     async def mech_display(self, interaction: discord.Interaction, channel: discord.TextChannel):
         await self._set_display(interaction, "mechanic", channel)
@@ -207,14 +221,12 @@ class Roster(commands.Cog):
 
     @salesroster.command(name="ranks", description="Set the sales rank roles (highest first)")
     @app_commands.describe(roles="Mention the rank roles in order, highest first")
-    @app_commands.checks.has_permissions(administrator=True)
     @app_commands.guild_only()
     async def sales_ranks(self, interaction: discord.Interaction, roles: str):
         await self._set_ranks(interaction, "sales", roles)
 
     @salesroster.command(name="display", description="Post an auto-updating sales roster in a channel")
     @app_commands.describe(channel="The channel to post it in")
-    @app_commands.checks.has_permissions(administrator=True)
     @app_commands.guild_only()
     async def sales_display(self, interaction: discord.Interaction, channel: discord.TextChannel):
         await self._set_display(interaction, "sales", channel)
