@@ -33,10 +33,7 @@ jobs:
           KNOWN_HOSTS: ${{ secrets.SFTP_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-<<<<<<< HEAD
 
-=======
->>>>>>> ef0a9886bfd0f7a44a902ee456f4308f12eb0768
           test -n "$KNOWN_HOSTS"
 
           mkdir -p ~/.ssh
@@ -152,32 +149,16 @@ jobs:
           fi
 
           echo "Response details:"
-<<<<<<< HEAD
           grep -Ei '^(HTTP/|content-type:|server:)' /tmp/pebble-headers.txt || true
 
           echo "Redirect destination:"
           grep -i '^location:' /tmp/pebble-headers.txt \
             | sed -E 's#(https?://[^/ ]+).*#\1/[path hidden]#' \
-=======
-          grep -Ei \
-            '^(HTTP/|content-type:|server:)' \
-            /tmp/pebble-headers.txt || true
-
-          echo "Redirect destination:"
-          grep -i '^location:' /tmp/pebble-headers.txt \
-            | sed -E \
-            's#(https?://[^/ ]+).*#\1/[path hidden]#' \
->>>>>>> ef0a9886bfd0f7a44a902ee456f4308f12eb0768
             || true
 
           case "$HTTP_CODE" in
             301|302|303|307|308)
-<<<<<<< HEAD
               echo "::error::PebbleHost API redirected. Set PEBBLE_PANEL_URL to https://panel.pebblehost.com (no path) and PEBBLE_SERVER_ID to the short server id."
-=======
-              echo "::error::PebbleHost API redirected."
-              echo "Check the redirect destination."
->>>>>>> ef0a9886bfd0f7a44a902ee456f4308f12eb0768
               ;;
             401)
               echo "::error::Invalid API key (use a Client API key, starts with ptlc_)."
