@@ -4,8 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 import discord
 
-BRAND_COLOR = 0x5865F2
+BRAND_COLOR = 0xF3C22E  # royal gold, matching the Bot1 panels
 COLORS = {
+    "gold": 0xF3C22E,
     "blurple": 0x5865F2,
     "green": 0x57F287,
     "yellow": 0xFEE75C,
