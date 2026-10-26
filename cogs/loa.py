@@ -58,13 +58,19 @@ class LOAButton(discord.ui.DynamicItem[discord.ui.Button], template=r'loa:open')
         if cog is None:
             await interaction.response.send_message('The LOA form is unavailable right now.', ephemeral=True)
             return
-        await interaction.response.send_modal(LOAModal(cog))
+        # Pick a department first; the form then opens with that choice attached.
+        await interaction.response.send_message(
+            'Which department are you requesting leave from?',
+            view=DepartmentView(cog),
+            ephemeral=True,
+        )
 
 
 class LOAModal(discord.ui.Modal, title='Request a leave of absence'):
-    def __init__(self, cog: 'LOA'):
+    def __init__(self, cog: 'LOA', *, department: str):
         super().__init__()
         self.cog = cog
+        self.department = department
         self.starting = discord.ui.TextInput(
             label='Starting',
             placeholder='e.g. tomorrow, or Oct 20',
@@ -91,10 +97,38 @@ class LOAModal(discord.ui.Modal, title='Request a leave of absence'):
     async def on_submit(self, interaction: discord.Interaction):
         await self.cog.submit_request(
             interaction,
+            department=self.department,
             starting=str(self.starting).strip(),
             ending=str(self.ending).strip(),
             reason=str(self.reason).strip(),
         )
+
+
+class DepartmentSelect(discord.ui.Select):
+    """Dropdown for choosing which department the leave is for."""
+
+    def __init__(self, cog: 'LOA'):
+        self.cog = cog
+        super().__init__(
+            placeholder='Choose your department',
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(label='Dealership', value='Dealership', emoji='🚗'),
+                discord.SelectOption(label='Mechanic', value='Mechanic', emoji='🔧'),
+            ],
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(LOAModal(self.cog, department=self.values[0]))
+
+
+class DepartmentView(discord.ui.View):
+    """Short-lived ephemeral view that holds the department dropdown."""
+
+    def __init__(self, cog: 'LOA'):
+        super().__init__(timeout=120)
+        self.add_item(DepartmentSelect(cog))
 
 
 class LOA(commands.Cog):
@@ -134,8 +168,8 @@ class LOA(commands.Cog):
         container.add_item(discord.ui.TextDisplay('## 🗓️ Request a Leave of Absence'))
         container.add_item(discord.ui.Separator())
         container.add_item(discord.ui.TextDisplay(
-            'Going to be away? Tap **LOA** below and fill in your dates and reason. '
-            'Your request gets posted right here in this channel.'
+            'Going to be away? Tap **LOA** below, pick your department, and fill in '
+            'your dates and reason. Your request gets posted right here in this channel.'
         ))
         container.add_item(discord.ui.Separator())
 
@@ -146,7 +180,7 @@ class LOA(commands.Cog):
         view.add_item(container)
         return view
 
-    def _build_request(self, user: discord.abc.User, *, starting, ending, reason) -> discord.ui.LayoutView:
+    def _build_request(self, user: discord.abc.User, *, department, starting, ending, reason) -> discord.ui.LayoutView:
         """The posted leave request, in the same gold panel style."""
         view = discord.ui.LayoutView(timeout=None)
         container = discord.ui.Container(accent_colour=ACCENT_COLOR)
@@ -154,7 +188,8 @@ class LOA(commands.Cog):
         container.add_item(discord.ui.TextDisplay('## 🗓️ Leave of Absence'))
         container.add_item(discord.ui.Separator())
         container.add_item(discord.ui.TextDisplay(
-            f'**Member:** {user.mention}\n\n'
+            f'**Member:** {user.mention}\n'
+            f'**Department:** {department}\n\n'
             f'**Starting:** {starting}\n'
             f'**Ending:** {ending}\n'
             f'**Reason:** {reason}'
@@ -220,7 +255,7 @@ class LOA(commands.Cog):
 
     # --- Interaction handlers -----------------------------------------------------
 
-    async def submit_request(self, interaction: discord.Interaction, *, starting, ending, reason):
+    async def submit_request(self, interaction: discord.Interaction, *, department, starting, ending, reason):
         channel = interaction.channel
         if channel is None or not channel.permissions_for(interaction.guild.me).send_messages:
             await interaction.response.send_message(
@@ -231,7 +266,9 @@ class LOA(commands.Cog):
         await interaction.response.send_message('✅ Your LOA request has been posted.', ephemeral=True)
 
         await channel.send(
-            view=self._build_request(interaction.user, starting=starting, ending=ending, reason=reason),
+            view=self._build_request(
+                interaction.user, department=department, starting=starting, ending=ending, reason=reason,
+            ),
             allowed_mentions=discord.AllowedMentions.none(),
         )
         # Keep the button panel as the last message in the channel.
