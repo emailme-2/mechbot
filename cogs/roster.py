@@ -57,6 +57,7 @@ class Roster(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.cfg = _load()
+        self._started = False
 
     mechroster = app_commands.Group(name="mechroster", description="Mechanic roster")
     salesroster = app_commands.Group(name="salesroster", description="Sales roster")
@@ -72,9 +73,26 @@ class Roster(commands.Cog):
         return True
 
     # ── Rendering ───────────────────────────────────────────────────────────────
+    def _role_member_ids(self, guild, dept) -> set:
+        ids = set()
+        for rid in self.cfg[dept]["roles"]:
+            role = guild.get_role(rid)
+            if role:
+                ids.update(m.id for m in role.members if not m.bot)
+        return ids
+
+    def _dual_member_ids(self, guild) -> set:
+        """Members who hold a role from BOTH the mechanic and sales rosters."""
+        return self._role_member_ids(guild, "mechanic") & self._role_member_ids(guild, "sales")
+
     def _build_view(self, guild, dept) -> discord.ui.LayoutView:
         roles = self.cfg[dept]["roles"]
-        shown, blocks, total = set(), [], 0
+        # On the mechanic and sales rosters, anyone who holds a role from BOTH
+        # rosters is pulled out of their normal rank into an "On Both" block.
+        # The both-roster is a separate management list, so it's not affected.
+        both_ids = self._dual_member_ids(guild) if dept in ("mechanic", "sales") else set()
+
+        shown, blocks, on_both, normal_count = set(), [], [], 0
         for rid in roles:
             role = guild.get_role(rid)
             if not role:
@@ -82,9 +100,12 @@ class Roster(commands.Cog):
             members = [m for m in role.members if not m.bot and m.id not in shown]
             if not members:
                 continue
-            blocks.append((role.name, members))
             shown.update(m.id for m in members)
-            total += len(members)
+            normal = [m for m in members if m.id not in both_ids]
+            if normal:
+                blocks.append((role.name, normal))
+                normal_count += len(normal)
+            on_both.extend(m for m in members if m.id in both_ids)
 
         view = discord.ui.LayoutView(timeout=None)
         container = discord.ui.Container(accent_colour=BRAND_COLOR)
@@ -93,24 +114,33 @@ class Roster(commands.Cog):
 
         if not roles:
             container.add_item(discord.ui.TextDisplay(f"No ranks set. Use `/{DEPT_CMD[dept]} ranks`."))
-        elif not blocks:
+        elif not blocks and not on_both:
             container.add_item(discord.ui.TextDisplay("No members on the roster yet."))
         else:
             budget, used, truncated = 3600, 0, False
             for role_name, members in blocks:
                 block = f"**{role_name}**\n" + "\n".join(m.mention for m in members)
-                if used + len(block) > budget or len(container.children) >= 35:
+                if used + len(block) > budget or len(container.children) >= 33:
                     truncated = True
                     break
                 container.add_item(discord.ui.TextDisplay(block))
                 used += len(block)
+            if on_both and not truncated:
+                block = "**On Both**\n" + "\n".join(m.mention for m in on_both)
+                if used + len(block) <= budget and len(container.children) < 34:
+                    container.add_item(discord.ui.Separator())
+                    container.add_item(discord.ui.TextDisplay(block))
+                else:
+                    truncated = True
             if truncated:
                 container.add_item(discord.ui.TextDisplay("-# More members not shown (roster too long)."))
 
         container.add_item(discord.ui.Separator())
-        container.add_item(discord.ui.TextDisplay(
-            f"\U0001F465 **{total}** total\n-# Updates automatically when roles change"
-        ))
+        total = normal_count + len(on_both)
+        stats = f"\U0001F465 **{total}** total"
+        if on_both:
+            stats += f" · 🔁 **{len(on_both)}** on both"
+        container.add_item(discord.ui.TextDisplay(f"{stats}\n-# Updates automatically when roles change"))
         view.add_item(container)
         return view
 
@@ -267,9 +297,17 @@ class Roster(commands.Cog):
         if before.roles == after.roles:
             return
         changed = {r.id for r in before.roles} ^ {r.id for r in after.roles}
-        for dept in DEPTS:
-            cfg = self.cfg[dept]
-            if cfg.get("message_id") and changed & set(cfg.get("roles", [])):
+
+        to_refresh = set()
+        # mech and sales rosters share the "On Both" section, so a change to
+        # either one's roles can move someone on the other roster too.
+        if changed & (set(self.cfg["mechanic"]["roles"]) | set(self.cfg["sales"]["roles"])):
+            to_refresh |= {"mechanic", "sales"}
+        if changed & set(self.cfg["both"]["roles"]):
+            to_refresh.add("both")
+
+        for dept in to_refresh:
+            if self.cfg[dept].get("message_id"):
                 await self._refresh(after.guild, dept)
 
     @commands.Cog.listener()
@@ -277,6 +315,18 @@ class Roster(commands.Cog):
         for dept in DEPTS:
             if self.cfg[dept].get("message_id"):
                 await self._refresh(member.guild, dept)
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        # Refresh the persistent rosters once per start, so they reflect any role
+        # changes that happened while the bot was offline.
+        if self._started:
+            return
+        self._started = True
+        for guild in self.bot.guilds:
+            for dept in DEPTS:
+                if self.cfg[dept].get("message_id"):
+                    await self._refresh(guild, dept)
 
 
 async def setup(bot: commands.Bot) -> None:
