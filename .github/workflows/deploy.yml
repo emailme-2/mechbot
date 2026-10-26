@@ -118,12 +118,17 @@ jobs:
           test -n "$API_KEY"
           test -n "$SERVER_ID"
 
-          # Force https: a scheme-less or http:// panel URL makes Cloudflare answer
-          # the POST with a 302 redirect instead of restarting the server.
+          # Normalize the inputs so a slightly-off secret still works:
+          #  - force https (http/scheme-less makes Cloudflare 302 the POST)
+          #  - keep only the domain, dropping any path like /server/<id>
+          #  - if a full URL was pasted as the server id, keep just the last segment
+          # A leftover path or a non-API host is what returns a 302 to an HTML page.
           HOST="${PANEL_URL#http://}"
           HOST="${HOST#https://}"
           HOST="${HOST%/}"
-          ENDPOINT="https://${HOST}/api/client/servers/${SERVER_ID}/power"
+          HOST="${HOST%%/*}"
+          SID="${SERVER_ID##*/}"
+          ENDPOINT="https://${HOST}/api/client/servers/${SID}/power"
 
           echo "Sending PebbleHost restart request..."
 
