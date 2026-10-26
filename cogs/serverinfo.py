@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core import COLORS, panel
+from core import BRAND_COLOR, COLORS, panel
 
 
 class ServerInfo(commands.Cog):
@@ -34,6 +34,26 @@ class ServerInfo(commands.Cog):
             thumbnail=guild.icon.url if guild.icon else None,
             footer=f"Server ID: {guild.id}",
         )
+        await interaction.response.send_message(view=view)
+
+    @app_commands.command(name="servericon", description="Show the server's icon.")
+    @app_commands.guild_only()
+    async def servericon(self, interaction: discord.Interaction) -> None:
+        guild = interaction.guild
+        if guild is None or guild.icon is None:
+            view = panel("No icon", "This server doesn't have an icon set.", color=COLORS["red"])
+            await interaction.response.send_message(view=view, ephemeral=True)
+            return
+
+        url = guild.icon.replace(size=1024).url
+        view = discord.ui.LayoutView()
+        container = discord.ui.Container(accent_colour=BRAND_COLOR)
+        container.add_item(discord.ui.TextDisplay(f"## {guild.name} icon"))
+        gallery = discord.ui.MediaGallery()
+        gallery.add_item(media=url)
+        container.add_item(gallery)
+        container.add_item(discord.ui.TextDisplay(f"-# [Open full size]({url})"))
+        view.add_item(container)
         await interaction.response.send_message(view=view)
 
 
