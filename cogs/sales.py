@@ -32,6 +32,12 @@ OCR_URL = 'https://api.ocr.space/parse/image'
 CATEGORIES = ('mechanic', 'sale')
 CATEGORY_LABELS = {'mechanic': '🔧 Mechanic', 'sale': '🚗 Sales'}
 
+COMMISSION_RATE = 0.10  # car salesmen earn 10% of the sale total
+
+
+def _commission(total: int) -> int:
+    return round(total * COMMISSION_RATE)
+
 # 'helloworld' is OCR.space's shared demo key: rate-limited and unreliable, so set
 # your own free key in OCRSPACE_API_KEY. It only serves as a last-resort fallback.
 API_KEY = os.getenv('OCRSPACE_API_KEY', 'helloworld')
@@ -178,6 +184,17 @@ class Sales(commands.Cog):
 
         await self._react(message, '✅')
 
+        if category == 'sale':
+            commission = _commission(total)
+            try:
+                await message.reply(
+                    f'💰 {message.author.mention} earned **${commission:,}** commission '
+                    f'(10% of ${total:,}).',
+                    mention_author=False,
+                )
+            except discord.HTTPException:
+                pass
+
     @staticmethod
     async def _react(message: discord.Message, emoji: str) -> None:
         try:
@@ -216,14 +233,16 @@ class Sales(commands.Cog):
 
         for cat in CATEGORIES:
             c = stats.get(cat) or _blank()
-            embed.add_field(
-                name=CATEGORY_LABELS[cat],
-                value=(
-                    f"**This week:** {c['weekly_cars']} cars, ${c['weekly_total']:,}\n"
-                    f"**Lifetime:** {c['lifetime_cars']} cars, ${c['lifetime_total']:,}"
-                ),
-                inline=False,
+            value = (
+                f"**This week:** {c['weekly_cars']} cars, ${c['weekly_total']:,}\n"
+                f"**Lifetime:** {c['lifetime_cars']} cars, ${c['lifetime_total']:,}"
             )
+            if cat == 'sale':
+                value += (
+                    f"\n**Commission (10%):** ${_commission(c['weekly_total']):,} this week, "
+                    f"${_commission(c['lifetime_total']):,} lifetime"
+                )
+            embed.add_field(name=CATEGORY_LABELS[cat], value=value, inline=False)
         embed.set_footer(text='Weekly totals reset every Monday')
         await interaction.response.send_message(embed=embed)
 
