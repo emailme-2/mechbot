@@ -119,14 +119,15 @@ jobs:
           test -n "$API_KEY"
           test -n "$SERVER_ID"
 
-          echo "Sending restart request to PebbleHost..."
+          echo "Sending PebbleHost restart request..."
 
           HTTP_CODE=$(curl \
             --silent \
             --show-error \
-            --output /tmp/pebble-response.txt \
-            --write-out "%{http_code}" \
             --max-time 30 \
+            --output /tmp/pebble-response.txt \
+            --dump-header /tmp/pebble-headers.txt \
+            --write-out "%{http_code}" \
             --request POST \
             "${PANEL_URL%/}/api/client/servers/${SERVER_ID}/power" \
             -H "Authorization: Bearer ${API_KEY}" \
@@ -136,29 +137,47 @@ jobs:
 
           echo "PebbleHost HTTP status: $HTTP_CODE"
 
-          if [ "$HTTP_CODE" != "204" ]; then
-            echo "::error::PebbleHost restart request failed."
-
-            case "$HTTP_CODE" in
-              301|302|303|307|308)
-                echo "::error::API returned a redirect."
-                echo "Check the panel URL or Cloudflare protection."
-                ;;
-              401|403)
-                echo "::error::Authentication or API access denied."
-                ;;
-              404)
-                echo "::error::Check the server identifier and API endpoint."
-                ;;
-              *)
-                echo "::error::Unexpected API response."
-                ;;
-            esac
-
-            exit 1
+          if [ "$HTTP_CODE" = "204" ]; then
+            echo "PebbleHost accepted restart request."
+            exit 0
           fi
 
-          echo "PebbleHost accepted restart request."
+          echo "Response details:"
+
+          grep -Ei \
+            '^(HTTP/|location:|content-type:|server:)' \
+            /tmp/pebble-headers.txt \
+            | sed -E \
+            's#(https?://[^/ ]+).*#\1/[path hidden]#' \
+            || true
+
+          case "$HTTP_CODE" in
+            301|302|303|307|308)
+              echo "::error::PebbleHost API redirected."
+              echo "Check panel URL and Cloudflare."
+              ;;
+            401)
+              echo "::error::Invalid API key."
+              ;;
+            403)
+              echo "::error::API access forbidden."
+              ;;
+            404)
+              echo "::error::Server ID or endpoint not found."
+              ;;
+            429)
+              echo "::error::API rate limit reached."
+              ;;
+            500|502|503|504)
+              echo "::error::PebbleHost server error."
+              ;;
+            *)
+              echo "::error::Unexpected API response."
+              ;;
+          esac
+
+          echo "::error::Restart not confirmed."
+          exit 1
 
       - name: Deployment complete
         if: success()
@@ -172,4 +191,3 @@ jobs:
           echo "Bot1 through Bot4 upload paths untouched."
           echo "PebbleHost restart request accepted."
           echo "=================================="
-          
