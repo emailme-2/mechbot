@@ -47,21 +47,24 @@ def _rank_name(member, cat):
     return None
 
 # Commission rate per rank. Set to the real percentages once known; 0 hides it.
-DEFAULT_COMMISSION = 0.0
 RANK_COMMISSION = {
     'Mechanic': 0.0,
     'Master Tech': 0.0,
     'Salesman': 0.10,
     'Supervisor': 0.10,
 }
+# Fallback rate per department, used for pre-rank "(earlier)" or unranked totals.
+DEPT_DEFAULT = {'mechanic': 0.0, 'sale': 0.10}
 
 
-def _rate(rank) -> float:
-    return RANK_COMMISSION.get(rank, DEFAULT_COMMISSION)
+def _rate(cat, rank) -> float:
+    if rank in RANK_COMMISSION:
+        return RANK_COMMISSION[rank]
+    return DEPT_DEFAULT.get(cat, 0.0)
 
 
-def _commission(total: int, rank=None) -> int:
-    return round(total * _rate(rank))
+def _commission(total: int, cat, rank=None) -> int:
+    return round(total * _rate(cat, rank))
 
 
 def _rank_order(cat: str, dept: dict) -> list:
@@ -230,12 +233,12 @@ class Sales(commands.Cog):
         await self._react(message, '✅')
 
         if category == 'sale':
-            commission = _commission(total, rank)
+            commission = _commission(total, category, rank)
             if commission:
                 try:
                     await message.reply(
                         f'💰 {message.author.mention} earned **${commission:,}** commission '
-                        f'({round(_rate(rank) * 100)}% of ${total:,}).',
+                        f'({round(_rate(category, rank) * 100)}% of ${total:,}).',
                         mention_author=False,
                     )
                 except discord.HTTPException:
@@ -296,8 +299,8 @@ class Sales(commands.Cog):
             week_comm = life_comm = 0
             for rank in _rank_order(cat, dept):
                 r = dept[rank]
-                rate = _rate(rank)
-                w, l = _commission(r['weekly_total'], rank), _commission(r['lifetime_total'], rank)
+                rate = _rate(cat, rank)
+                w, l = _commission(r['weekly_total'], cat, rank), _commission(r['lifetime_total'], cat, rank)
                 week_comm += w
                 life_comm += l
                 pct = f" ({round(rate * 100)}%)" if rate else ""
