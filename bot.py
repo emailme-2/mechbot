@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core import COLORS, base_embed, now
+from core import COLORS, now, panel
 
 COGS_DIR = Path(__file__).with_name("cogs")
 
@@ -18,13 +18,17 @@ class MechTree(app_commands.CommandTree):
     async def on_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
         print(f"Command error: {error!r}")
 
-        embed = base_embed("Something went wrong", "That command failed. Please try again in a moment.", COLORS["red"])
-        embed.set_footer(text=type(error).__name__)
+        view = panel(
+            "Something went wrong",
+            "That command failed. Please try again in a moment.",
+            color=COLORS["red"],
+            footer=type(error).__name__,
+        )
 
         if interaction.response.is_done():
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.followup.send(view=view, ephemeral=True)
         else:
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(view=view, ephemeral=True)
 
 
 class MechBot(commands.Bot):

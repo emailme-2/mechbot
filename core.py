@@ -37,6 +37,30 @@ def format_duration(delta: timedelta) -> str:
     return " ".join(parts)
 
 
-def base_embed(title: str, description: str = "", color: int = BRAND_COLOR) -> discord.Embed:
-    """Every embed in the bot starts here, so the brand color and timestamp stay consistent."""
-    return discord.Embed(title=title, description=description or None, color=color, timestamp=now())
+def panel(title: str, *blocks: str, color: int = BRAND_COLOR, thumbnail: str | None = None,
+          footer: str | None = None) -> discord.ui.LayoutView:
+    """Build a Components V2 container (the new 'embed' style the whole bot uses).
+
+    `blocks` are markdown sections stacked under the title with a divider between
+    each; `thumbnail` puts an image beside the title; `footer` is small grey text.
+    """
+    view = discord.ui.LayoutView()
+    container = discord.ui.Container(accent_colour=color)
+
+    heading = discord.ui.TextDisplay(f"## {title}")
+    if thumbnail:
+        container.add_item(discord.ui.Section(heading, accessory=discord.ui.Thumbnail(media=thumbnail)))
+    else:
+        container.add_item(heading)
+
+    for block in blocks:
+        if block:
+            container.add_item(discord.ui.Separator())
+            container.add_item(discord.ui.TextDisplay(block))
+
+    if footer:
+        container.add_item(discord.ui.Separator())
+        container.add_item(discord.ui.TextDisplay(f"-# {footer}"))
+
+    view.add_item(container)
+    return view

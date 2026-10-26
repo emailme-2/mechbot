@@ -6,14 +6,14 @@ To add a command group:
   3. Save and restart the bot. The loader finds the file and syncs the command.
 
 Files whose name starts with '_' are skipped by the loader, so this one never
-runs as-is. Shared helpers live in core.py: base_embed, COLORS, now, format_duration.
+runs as-is. Shared helpers live in core.py: panel, COLORS, now, format_duration.
 """
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core import base_embed
+from core import panel
 
 
 class Template(commands.Cog):
@@ -22,8 +22,8 @@ class Template(commands.Cog):
 
     @app_commands.command(name="example", description="An example command to copy.")
     async def example(self, interaction: discord.Interaction) -> None:
-        embed = base_embed("Example", "Replace this with your own command.")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        view = panel("Example", "Replace this with your own command.")
+        await interaction.response.send_message(view=view, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

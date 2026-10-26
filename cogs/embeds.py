@@ -1,18 +1,18 @@
-"""The /embed command: build a custom embed with a chosen accent color."""
+"""The /embed command: build a custom panel with a chosen accent color."""
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core import BRAND_COLOR, COLORS, base_embed
+from core import BRAND_COLOR, COLORS, panel
 
 
 class Embeds(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="embed", description="Build a custom embed.")
-    @app_commands.describe(title="Embed title", description="Embed body text", color="Accent color")
+    @app_commands.command(name="embed", description="Build a custom message panel.")
+    @app_commands.describe(title="Panel title", description="Panel body text", color="Accent color")
     @app_commands.choices(
         color=[app_commands.Choice(name=name.title(), value=name) for name in COLORS]
     )
@@ -25,11 +25,13 @@ class Embeds(commands.Cog):
     ) -> None:
         accent = COLORS[color.value] if color else BRAND_COLOR
 
-        embed = base_embed(title, description, accent)
-        embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url)
-        embed.set_footer(text="Posted with /embed", icon_url=interaction.client.user.display_avatar.url)
-
-        await interaction.response.send_message(embed=embed)
+        view = panel(
+            title,
+            description,
+            color=accent,
+            footer=f"Posted by {interaction.user.display_name} with /embed",
+        )
+        await interaction.response.send_message(view=view)
 
 
 async def setup(bot: commands.Bot) -> None:

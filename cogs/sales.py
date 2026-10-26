@@ -22,7 +22,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core import base_embed
+from core import panel
 
 logger = logging.getLogger(__name__)
 
@@ -224,16 +224,20 @@ class Sales(commands.Cog):
         _save(self.data)  # persist a possible weekly reset
         stats = g['users'].get(str(target.id))
 
-        embed = base_embed('📊 Completed Work')
-        embed.set_author(name=target.display_name, icon_url=target.display_avatar.url)
         if not stats:
-            embed.description = f'{target.mention} has no recorded work yet.'
-            await interaction.response.send_message(embed=embed)
+            view = panel(
+                '📊 Completed Work',
+                f'{target.mention} has no recorded work yet.',
+                thumbnail=target.display_avatar.url,
+            )
+            await interaction.response.send_message(view=view)
             return
 
+        blocks = []
         for cat in CATEGORIES:
             c = stats.get(cat) or _blank()
             value = (
+                f"### {CATEGORY_LABELS[cat]}\n"
                 f"**This week:** {c['weekly_cars']} cars, ${c['weekly_total']:,}\n"
                 f"**Lifetime:** {c['lifetime_cars']} cars, ${c['lifetime_total']:,}"
             )
@@ -242,9 +246,16 @@ class Sales(commands.Cog):
                     f"\n**Commission (10%):** ${_commission(c['weekly_total']):,} this week, "
                     f"${_commission(c['lifetime_total']):,} lifetime"
                 )
-            embed.add_field(name=CATEGORY_LABELS[cat], value=value, inline=False)
-        embed.set_footer(text='Weekly totals reset every Monday')
-        await interaction.response.send_message(embed=embed)
+            blocks.append(value)
+
+        view = panel(
+            '📊 Completed Work',
+            f'Record for {target.mention}',
+            *blocks,
+            thumbnail=target.display_avatar.url,
+            footer='Weekly totals reset every Monday',
+        )
+        await interaction.response.send_message(view=view)
 
 
 async def setup(bot: commands.Bot):
