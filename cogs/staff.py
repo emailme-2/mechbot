@@ -1,6 +1,6 @@
 """Mech-shop staff management: /hire, /promote, /demote.
 
-Only two people can run these (the owners). Each department is a rank ladder the
+Only members holding an authorized role can run these. Each department is a rank ladder the
 bot manages; the Manager roles above them are assigned manually and left alone.
 Hiring/promoting also keeps the shared Accepted role and the department role in
 sync. The bot needs Manage Roles, with its own role above every role listed here.
@@ -12,8 +12,8 @@ from discord.ext import commands
 
 from core import COLORS, panel
 
-# Who may run these commands.
-ALLOWED_USERS = {1317971108829597746, 1275730902105849949}
+# Roles allowed to run these commands (a member needs to hold one of them).
+ALLOWED_ROLES = {1317971108829597746, 1275730902105849949}
 
 # Rank ladders, lowest to highest (the Manager tier above these is manual).
 MECH_LADDER = [1358223305458450593, 1252025838405423155]   # Mechanic, Master Tech
@@ -56,7 +56,8 @@ class Staff(commands.Cog):
         self.bot = bot
 
     async def _deny(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id in ALLOWED_USERS:
+        member_roles = {r.id for r in getattr(interaction.user, "roles", [])}
+        if member_roles & ALLOWED_ROLES:
             return False
         view = panel("⛔ Not allowed", "You can't use this command.", color=COLORS["red"])
         await interaction.response.send_message(view=view, ephemeral=True)
