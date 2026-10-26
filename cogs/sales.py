@@ -32,11 +32,43 @@ OCR_URL = 'https://api.ocr.space/parse/image'
 CATEGORIES = ('mechanic', 'sale')
 CATEGORY_LABELS = {'mechanic': '🔧 Mechanic', 'sale': '🚗 Sales'}
 
-COMMISSION_RATE = 0.10  # car salesmen earn 10% of the sale total
+# Rank roles per department (highest first), shown on /checksales.
+DEPT_RANKS = {
+    'mechanic': [(1252025838405423155, 'Master Tech'), (1358223305458450593, 'Mechanic')],
+    'sale': [(1289686368238440589, 'Supervisor'), (1289685969166930013, 'Salesman')],
+}
 
 
-def _commission(total: int) -> int:
-    return round(total * COMMISSION_RATE)
+def _rank_name(member, cat):
+    held = {r.id for r in getattr(member, 'roles', [])}
+    for rid, name in DEPT_RANKS.get(cat, []):
+        if rid in held:
+            return name
+    return None
+
+# Commission rate per rank. Set to the real percentages once known; 0 hides it.
+DEFAULT_COMMISSION = 0.0
+RANK_COMMISSION = {
+    'Mechanic': 0.0,
+    'Master Tech': 0.0,
+    'Salesman': 0.10,
+    'Supervisor': 0.10,
+}
+
+
+def _rate(rank) -> float:
+    return RANK_COMMISSION.get(rank, DEFAULT_COMMISSION)
+
+
+def _commission(total: int, rank=None) -> int:
+    return round(total * _rate(rank))
+
+
+def _rank_order(cat: str, dept: dict) -> list:
+    """Ranks present in `dept`, lowest ladder rank first, then any extras."""
+    ladder = [name for _, name in reversed(DEPT_RANKS.get(cat, []))]
+    known = [r for r in ladder if r in dept]
+    return known + [r for r in dept if r not in ladder]
 
 # 'helloworld' is OCR.space's shared demo key: rate-limited and unreliable, so set
 # your own free key in OCRSPACE_API_KEY. It only serves as a last-resort fallback.
@@ -47,13 +79,24 @@ AMOUNT_RE = re.compile(r'\$?\s*([\d][\d.,]{1,})')
 
 
 def _load() -> dict:
+    data = {}
     if DATA_FILE.exists():
         try:
             with DATA_FILE.open('r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
         except (json.JSONDecodeError, OSError):
-            pass
-    return {}
+            data = {}
+    # Migrate old per-department totals into a single "(earlier)" rank bucket,
+    # so totals recorded before rank tracking aren't lost.
+    for g in data.values():
+        if not isinstance(g, dict):
+            continue
+        for user in g.get('users', {}).values():
+            for cat in CATEGORIES:
+                d = user.get(cat)
+                if isinstance(d, dict) and 'weekly_cars' in d:
+                    user[cat] = {'(earlier)': d}
+    return data
 
 
 def _save(data: dict) -> None:
@@ -109,9 +152,9 @@ class Sales(commands.Cog):
             g['week_start'] = _week_start()
             for user in g['users'].values():
                 for cat in CATEGORIES:
-                    if cat in user:
-                        user[cat]['weekly_cars'] = 0
-                        user[cat]['weekly_total'] = 0
+                    for stats in (user.get(cat) or {}).values():
+                        stats['weekly_cars'] = 0
+                        stats['weekly_total'] = 0
         return g
 
     async def _set_channel(self, interaction: discord.Interaction, category: str, channel: discord.TextChannel):
@@ -175,7 +218,9 @@ class Sales(commands.Cog):
 
         g = self._guild(message.guild.id)
         user = g['users'].setdefault(str(message.author.id), {})
-        stats = user.setdefault(category, _blank())
+        dept = user.setdefault(category, {})
+        rank = _rank_name(message.author, category) or 'Unranked'
+        stats = dept.setdefault(rank, _blank())
         stats['weekly_cars'] += 1
         stats['weekly_total'] += total
         stats['lifetime_cars'] += 1
@@ -185,15 +230,16 @@ class Sales(commands.Cog):
         await self._react(message, '✅')
 
         if category == 'sale':
-            commission = _commission(total)
-            try:
-                await message.reply(
-                    f'💰 {message.author.mention} earned **${commission:,}** commission '
-                    f'(10% of ${total:,}).',
-                    mention_author=False,
-                )
-            except discord.HTTPException:
-                pass
+            commission = _commission(total, rank)
+            if commission:
+                try:
+                    await message.reply(
+                        f'💰 {message.author.mention} earned **${commission:,}** commission '
+                        f'({round(_rate(rank) * 100)}% of ${total:,}).',
+                        mention_author=False,
+                    )
+                except discord.HTTPException:
+                    pass
 
     @staticmethod
     async def _react(message: discord.Message, emoji: str) -> None:
@@ -235,18 +281,39 @@ class Sales(commands.Cog):
 
         blocks = []
         for cat in CATEGORIES:
-            c = stats.get(cat) or _blank()
-            value = (
-                f"### {CATEGORY_LABELS[cat]}\n"
-                f"**This week:** {c['weekly_cars']} cars, ${c['weekly_total']:,}\n"
-                f"**Lifetime:** {c['lifetime_cars']} cars, ${c['lifetime_total']:,}"
-            )
-            if cat == 'sale':
-                value += (
-                    f"\n**Commission (10%):** ${_commission(c['weekly_total']):,} this week, "
-                    f"${_commission(c['lifetime_total']):,} lifetime"
+            dept = stats.get(cat) or {}
+            lines = [f"### {CATEGORY_LABELS[cat]}"]
+            current = _rank_name(target, cat)
+            if current:
+                lines.append(f"**Current rank:** {current}")
+
+            if not dept:
+                lines.append("No recorded work.")
+                blocks.append("\n".join(lines))
+                continue
+
+            week_comm = life_comm = 0
+            for rank in _rank_order(cat, dept):
+                r = dept[rank]
+                rate = _rate(rank)
+                w, l = _commission(r['weekly_total'], rank), _commission(r['lifetime_total'], rank)
+                week_comm += w
+                life_comm += l
+                pct = f" ({round(rate * 100)}%)" if rate else ""
+                wc = f" (${w:,} commission)" if rate else ""
+                lc = f" (${l:,} commission)" if rate else ""
+                lines.append(
+                    f"\n**{rank}**{pct}\n"
+                    f"This week: {r['weekly_cars']} cars, ${r['weekly_total']:,}{wc}\n"
+                    f"Lifetime: {r['lifetime_cars']} cars, ${r['lifetime_total']:,}{lc}"
                 )
-            blocks.append(value)
+
+            if life_comm or week_comm:
+                if cat == 'sale':
+                    lines.append("\n**Your commissions**")
+                    lines.append(f"**Sales Commission:** ${life_comm:,}")
+                lines.append(f"**Total commission:** ${week_comm:,} this week, ${life_comm:,} lifetime")
+            blocks.append("\n".join(lines))
 
         view = panel(
             '📊 Completed Work',
