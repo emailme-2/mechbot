@@ -33,10 +33,12 @@ jobs:
         env:
           KNOWN_HOSTS: ${{ secrets.SFTP_KNOWN_HOSTS }}
         run: |
-          set -eu
+          set -euo pipefail
           test -n "$KNOWN_HOSTS"
+
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
+
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
@@ -57,6 +59,7 @@ jobs:
 
           lftp -u "$SFTP_USERNAME","$SFTP_PASSWORD" \
             -p "$SFTP_PORT" "sftp://$SFTP_HOST" <<'EOF'
+
           set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=yes"
           set net:max-retries 2
           set net:timeout 30
@@ -115,20 +118,77 @@ jobs:
           test -n "$API_KEY"
           test -n "$SERVER_ID"
 
-          curl --fail-with-body \
-            --retry 3 \
+          echo "Sending PebbleHost restart request..."
+
+          HTTP_CODE=$(curl \
+            --silent \
+            --show-error \
+            --max-time 30 \
+            --output /tmp/pebble-response.txt \
+            --dump-header /tmp/pebble-headers.txt \
+            --write-out "%{http_code}" \
             --request POST \
             "${PANEL_URL%/}/api/client/servers/${SERVER_ID}/power" \
             -H "Authorization: Bearer ${API_KEY}" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json" \
-            --data '{"signal":"restart"}'
+            --data '{"signal":"restart"}')
 
-          echo "PebbleHost restart requested."
+          echo "PebbleHost HTTP status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" = "204" ]; then
+            echo "PebbleHost accepted restart request."
+            exit 0
+          fi
+
+          echo "Response details:"
+          grep -Ei \
+            '^(HTTP/|content-type:|server:)' \
+            /tmp/pebble-headers.txt || true
+
+          echo "Redirect destination:"
+          grep -i '^location:' /tmp/pebble-headers.txt \
+            | sed -E \
+            's#(https?://[^/ ]+).*#\1/[path hidden]#' \
+            || true
+
+          case "$HTTP_CODE" in
+            301|302|303|307|308)
+              echo "::error::PebbleHost API redirected."
+              echo "Check the redirect destination."
+              ;;
+            401)
+              echo "::error::Invalid API key."
+              ;;
+            403)
+              echo "::error::API access forbidden."
+              ;;
+            404)
+              echo "::error::Server ID or endpoint not found."
+              ;;
+            429)
+              echo "::error::API rate limit reached."
+              ;;
+            500|502|503|504)
+              echo "::error::PebbleHost server error."
+              ;;
+            *)
+              echo "::error::Unexpected API response."
+              ;;
+          esac
+
+          echo "::error::Restart not confirmed."
+          exit 1
 
       - name: Deployment complete
+        if: success()
         run: |
-          echo "Bot5 upload completed."
-          echo "Existing JSON files were not overwritten."
-          echo "Bot1 through Bot4 files were not targeted."
-          echo "PebbleHost restart requested successfully."
+          echo "=================================="
+          echo "BOT5 DEPLOYMENT SUCCESSFUL"
+          echo "=================================="
+          echo "Bot5 files uploaded."
+          echo "Existing JSON files protected."
+          echo "Existing databases protected."
+          echo "Bot1 through Bot4 upload paths untouched."
+          echo "PebbleHost restart request accepted."
+          echo "=================================="
