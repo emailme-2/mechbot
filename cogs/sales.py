@@ -125,7 +125,7 @@ class Sales(commands.Cog):
         form = aiohttp.FormData()
         form.add_field('apikey', API_KEY)
         form.add_field('language', 'eng')
-        form.add_field('OCREngine', '2')
+        form.add_field('OCREngine', '3')  # engine 3 reads the dark-theme invoice far better
         form.add_field('scale', 'true')
         form.add_field('file', image, filename=attachment.filename,
                        content_type=attachment.content_type or 'image/png')
