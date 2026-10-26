@@ -276,7 +276,8 @@ class Sales(commands.Cog):
                 f'{target.mention} has no recorded work yet.',
                 thumbnail=target.display_avatar.url,
             )
-            await interaction.response.send_message(view=view)
+            await interaction.response.send_message(
+                view=view, allowed_mentions=discord.AllowedMentions.none())
             return
 
         blocks = []
@@ -322,7 +323,8 @@ class Sales(commands.Cog):
             thumbnail=target.display_avatar.url,
             footer='Weekly totals reset every Monday',
         )
-        await interaction.response.send_message(view=view)
+        await interaction.response.send_message(
+            view=view, allowed_mentions=discord.AllowedMentions.none())
 
 
 async def setup(bot: commands.Bot):
