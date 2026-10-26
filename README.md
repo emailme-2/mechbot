@@ -15,6 +15,31 @@ A small Discord bot built with [discord.py](https://discordpy.readthedocs.io/) u
 
 The bot comes online with an "online" presence and a listening activity.
 
+## Project structure
+
+```
+main.py            Entry point: loads the token and runs the bot
+bot.py             The MechBot client: auto-loads cogs and syncs slash commands
+core.py            Shared helpers (colors, timestamps, base_embed)
+cogs/
+  general.py       /ping, /hello, /info, /help
+  serverinfo.py    /server
+  embeds.py        /embed
+  _template.py     Copy this to start a new cog
+```
+
+Every `.py` file in `cogs/` is loaded automatically on startup. Files whose name
+starts with `_` are skipped, so `_template.py` stays dormant until you copy it.
+
+## Add a command
+
+1. Copy `cogs/_template.py` to `cogs/<yourname>.py` (without the leading underscore).
+2. Rename the class and set your own command name and description.
+3. Restart the bot. The new command is picked up and synced automatically.
+
+Use the helpers in `core.py` (`base_embed`, `COLORS`, `now`, `format_duration`) so new
+commands match the look of the existing ones.
+
 ## Setup
 
 1. Create an application at <https://discord.com/developers/applications>.
