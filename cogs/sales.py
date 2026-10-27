@@ -233,7 +233,18 @@ class Sales(commands.Cog):
 
         total, fees = await self._read_invoice(image)
         if total is None:
-            await self._react(message, '⚠️')  # couldn't read a total, not counted
+            # Couldn't read a total: flag it and ping the poster so the invoice
+            # doesn't just go uncounted without anyone noticing.
+            await self._react(message, '⚠️')
+            try:
+                await message.reply(
+                    f"⚠️ {message.author.mention} I couldn't read a total on that "
+                    f"invoice, so it wasn't counted. Please repost a clear, full "
+                    f"screenshot of the invoice and I'll read it again.",
+                    mention_author=False,
+                )
+            except discord.HTTPException:
+                pass
             return
 
         g = self._guild(message.guild.id)
